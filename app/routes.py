@@ -63,27 +63,6 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-
-def extract_dag_id_from_file(py_file_stream):
-    """
-    Đọc nội dung file và trích xuất giá trị của biến 'dag_id' (nếu có).
-    Trả về chuỗi dag_id hoặc None nếu không tìm thấy.
-    """
-    try:
-        file_content = py_file_stream.read().decode('utf-8')
-        tree = ast.parse(file_content)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == 'dag_id':
-                        if isinstance(node.value, ast.Str):
-                            return node.value.s
-        return None
-    except Exception as e:
-        print(f"Error parsing DAG file: {e}")
-        return None
-
-
 @bp.route('/upload', methods=['GET', 'POST'])
 @login_required
 def upload():
@@ -101,28 +80,22 @@ def upload():
         if py_file and not dag_id:
             flash('DAG ID is required for Python DAG files')
             return redirect(url_for('main.upload'))
-        if py_file and dag_id:
-            dag_id_from_file = extract_dag_id_from_file(py_file.stream)
-            py_file.stream.seek(0)  # reset file pointer để không bị lỗi ở bước upload tiếp theo
+        if py_file and (not dag_id.isidentifier() or ' ' in dag_id):
+            flash('DAG ID must be a valid Python identifier (no spaces or special characters)')
+            return redirect(url_for('main.upload'))
 
-            if not dag_id.isidentifier() or ' ' in dag_id:
-                flash('DAG ID must be a valid Python identifier (no spaces or special characters)')
-                return redirect(url_for('main.upload'))
+        # Tạo thư mục app/dags/<user_id> nếu chưa tồn tại
+        user_dag_dir = os.path.join('app', 'dags', str(current_user.id))
+        os.makedirs(user_dag_dir, exist_ok=True)
 
-            if dag_id_from_file and dag_id != dag_id_from_file:
-                flash(
-                    f'DAG ID must match the "dag_id" defined in the uploaded Python file (found "{dag_id_from_file}")')
-                return redirect(url_for('main.upload'))
-
-
-        # Tạo thư mục app/dags nếu chưa tồn tại
-        dag_dir = os.path.join('app', 'dags')
-        os.makedirs(dag_dir, exist_ok=True)
-
+        # Xử lý file dữ liệu (bất kỳ loại nào)
         if data_file:
-            # Dùng tên gốc
-            data_dag_filename = secure_filename(data_file.filename)
-            data_dag_path = os.path.join(dag_dir, data_dag_filename)
+            # Lấy tên file gốc
+            data_filename = data_file.filename
+            _, file_ext = os.path.splitext(data_filename)
+            file_type = file_ext.lstrip('.').lower() or 'unknown'
+            # Lưu vào app/dags/<user_id>/<filename>
+            data_dag_path = os.path.join(user_dag_dir, data_filename)
 
             logger.debug(f"Saving data file to Airflow dags: {data_dag_path}")
             data_file.seek(0)
@@ -133,13 +106,9 @@ def upload():
                 flash('Error saving data file')
                 return redirect(url_for('main.upload'))
 
-            # Xác định loại file qua đuôi
-            _, file_ext = os.path.splitext(data_file.filename)
-            file_type = file_ext.lstrip('.').lower() or 'unknown'
-
             data_record = File(
                 user_id=current_user.id,
-                filename=data_dag_filename,
+                filename=data_filename,  # Lưu tên gốc
                 file_type=file_type,
                 status='uploaded',
                 dag_id=dag_id if dag_id else None
@@ -148,9 +117,7 @@ def upload():
 
         # Xử lý file Python DAG
         if py_file:
-            py_uuid = uuid.uuid4()
-            py_filename = f"dags/{py_uuid}_{py_file.filename}"
-            py_dag_path = os.path.join(dag_dir, f"{dag_id}.py")
+            py_dag_path = os.path.join('app', 'dags', f"{dag_id}.py")
 
             logger.debug(f"Saving PY to Airflow dags: {py_dag_path}")
             py_file.seek(0)
@@ -163,19 +130,29 @@ def upload():
 
             py_record = File(
                 user_id=current_user.id,
-                filename=py_filename,
+                filename=f"{dag_id}.py",
                 file_type='py',
                 status='processing',  # Đặt trạng thái processing vì DAG sẽ chạy
                 dag_id=dag_id
             )
             db.session.add(py_record)
 
+            # Buộc Airflow quét lại DAG
+            try:
+                import subprocess
+                subprocess.run(['docker-compose', 'exec', 'airflow-webserver', 'airflow', 'dags', 'reserialize'],
+                               check=True)
+                logger.debug("Triggered Airflow DAG reserialization")
+            except Exception as e:
+                logger.error(f"Failed to reserialize DAGs: {e}")
+                flash('Error triggering DAG reserialization')
+                return redirect(url_for('main.upload'))
+
         db.session.commit()
         flash('Files uploaded successfully')
         return redirect(url_for('main.dashboard'))
 
     return render_template('upload.html')
-
 
 @bp.route('/results')
 @login_required

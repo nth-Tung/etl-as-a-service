@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=OneDrive
+Comment=Open OneDrive
+Exec=xdg-open https://hcmcou-my.sharepoint.com/my
+Icon=/home/nttung/Pictures/OneDrive_ic.png
+Terminal=false
+Type=Application

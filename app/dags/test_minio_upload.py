@@ -15,7 +15,7 @@ def upload_to_minio():
 with DAG(
     dag_id="test_minio_upload",
     start_date=datetime(2024, 1, 1),
-    schedule_interval=None,
+    schedule_interval='@once',
     catchup=False
 ) as dag:
     upload = PythonOperator(
