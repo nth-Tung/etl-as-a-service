@@ -1,0 +1,45 @@
+
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+ <div class="nav-links">
+
+    </div>
+
+    <h1>My Files in MinIO</h1>
+
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <ul class="flash-messages">
+                {% for message in messages %}
+                    <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+
+    {% if files %}
+        <table>
+            <thead>
+                <tr>
+                    <th>File Name</th>
+                    <th>Size (Bytes)</th>
+                    <th>Last Modified</th>
+                    <th>Download</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in files %}
+                    <tr>
+                        <td>{{ file.name }}</td>
+                        <td>{{ file.size }}</td>
+                        <td>{{ file.last_modified }}</td>
+                        <td><a href="{{ url_for('main.download_file', filename=file.name) }}">Download</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No files found.</p>
+    {% endif %}
+{% endblock %}
