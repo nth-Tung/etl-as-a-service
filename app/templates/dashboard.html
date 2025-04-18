@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1 class="mb-4">Welcome, {{ current_user.username }}!</h1>
+        <p class="lead">This is your ETL Service dashboard. Choose an action below:</p>
+        <div class="list-group">
+            <a href="{{ url_for('main.upload') }}" class="list-group-item list-group-item-action">
+                <h5 class="mb-1">Upload Files</h5>
+                <p class="mb-1">Upload CSV and Python DAG files to process data.</p>
+            </a>
+            <a href="{{ url_for('main.results') }}" class="list-group-item list-group-item-action">
+                <h5 class="mb-1">View Results</h5>
+                <p class="mb-1">Check the status of your processed files.</p>
+            </a>
+            <a href="{{ url_for('main.files') }}" class="list-group-item list-group-item-action">
+                <h5 class="mb-1">My Files</h5>
+                <p class="mb-1">View and download your files stored in MinIO.</p>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
