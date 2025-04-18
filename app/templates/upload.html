@@ -1,18 +1,26 @@
 {% extends 'base.html' %}
 {% block content %}
 <h2>Upload Files</h2>
+<script>
+        function toggleDagId() {
+            var pyFileInput = document.getElementById('py_file');
+            var dagIdInput = document.getElementById('dag_id');
+            dagIdInput.disabled = !pyFileInput.files.length;
+            dagIdInput.required = pyFileInput.files.length > 0;
+        }
+    </script>
 <form method="POST" enctype="multipart/form-data">
     <div>
-            <label for="dag_id">DAG ID:</label>
-            <input type="text" id="dag_id" name="dag_id" required>
+            <label for="dag_id">DAG ID (required for .py files):</label>
+            <input type="text" id="dag_id" name="dag_id" disabled>
     </div>
     <div class="mb-3">
-        <label for="csv_file" class="form-label">CSV File</label>
-        <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv">
+        <label for="data_file" class="form-label">Data File (any type):</label>
+        <input type="file" class="form-control" id="data_file" name="data_file" accept="*/*">
     </div>
     <div class="mb-3">
         <label for="py_file" class="form-label">Python DAG File</label>
-        <input type="file" class="form-control" id="py_file" name="py_file" accept=".py">
+        <input type="file" class="form-control" id="py_file" name="py_file" accept=".py" onchange="toggleDagId()">
     </div>
     <button type="submit" class="btn btn-primary">Upload</button>
 </form>
