@@ -49,7 +49,7 @@ def list_user_files(user_id):
     try:
         objects = client.list_objects(
             Config.MINIO_BUCKET,
-            prefix=f"{user_id}/",
+            # prefix=f"{user_id}/",
             recursive=True
         )
         files = [

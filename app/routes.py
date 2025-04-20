@@ -11,6 +11,7 @@ from datetime import datetime
 import uuid
 import ast
 from werkzeug.utils import secure_filename
+from airflow.models import  DagBag
 
 bp = Blueprint('main', __name__)
 
@@ -69,24 +70,16 @@ def upload():
     if request.method == 'POST':
         data_file = request.files.get('data_file')
         py_file = request.files.get('py_file')
-        dag_id = request.form.get('dag_id')
+
 
         # Kiểm tra ít nhất một file được upload
         if not data_file and not py_file:
             flash('At least one file is required')
             return redirect(url_for('main.upload'))
 
-        # Đảm bảo dag_id được cung cấp khi upload file .py
-        if py_file and not dag_id:
-            flash('DAG ID is required for Python DAG files')
-            return redirect(url_for('main.upload'))
-        if py_file and (not dag_id.isidentifier() or ' ' in dag_id):
-            flash('DAG ID must be a valid Python identifier (no spaces or special characters)')
-            return redirect(url_for('main.upload'))
-
         # Tạo thư mục app/dags/<user_id> nếu chưa tồn tại
-        user_dag_dir = os.path.join('app', 'dags', str(current_user.id))
-        os.makedirs(user_dag_dir, exist_ok=True)
+        # user_dag_dir = os.path.join('app', 'dags', str(current_user.id))
+        # os.makedirs(user_dag_dir, exist_ok=True)
 
         # Xử lý file dữ liệu (bất kỳ loại nào)
         if data_file:
@@ -95,7 +88,7 @@ def upload():
             _, file_ext = os.path.splitext(data_filename)
             file_type = file_ext.lstrip('.').lower() or 'unknown'
             # Lưu vào app/dags/<user_id>/<filename>
-            data_dag_path = os.path.join(user_dag_dir, data_filename)
+            data_dag_path = os.path.join('app','dags', data_filename)
 
             logger.debug(f"Saving data file to Airflow dags: {data_dag_path}")
             data_file.seek(0)
@@ -111,13 +104,13 @@ def upload():
                 filename=data_filename,  # Lưu tên gốc
                 file_type=file_type,
                 status='uploaded',
-                dag_id=dag_id if dag_id else None
+                dag_id= None
             )
             db.session.add(data_record)
 
         # Xử lý file Python DAG
         if py_file:
-            py_dag_path = os.path.join('app', 'dags', f"{dag_id}.py")
+            py_dag_path = os.path.join('app', 'dags', f"{py_file.filename}")
 
             logger.debug(f"Saving PY to Airflow dags: {py_dag_path}")
             py_file.seek(0)
@@ -128,25 +121,24 @@ def upload():
                 flash('Error saving PY file')
                 return redirect(url_for('main.upload'))
 
+            dag_bag = DagBag(dag_folder=f'app/dags/{py_file.filename}', include_examples=False)
+            dag_id = next(iter(dag_bag.dags), None)
+
             py_record = File(
                 user_id=current_user.id,
-                filename=f"{dag_id}.py",
+                filename=py_file.filename,
                 file_type='py',
-                status='processing',  # Đặt trạng thái processing vì DAG sẽ chạy
+                status='processing',
                 dag_id=dag_id
             )
             db.session.add(py_record)
 
-            # Buộc Airflow quét lại DAG
-            try:
-                import subprocess
-                subprocess.run(['docker-compose', 'exec', 'airflow-webserver', 'airflow', 'dags', 'reserialize'],
-                               check=True)
-                logger.debug("Triggered Airflow DAG reserialization")
-            except Exception as e:
-                logger.error(f"Failed to reserialize DAGs: {e}")
-                flash('Error triggering DAG reserialization')
-                return redirect(url_for('main.upload'))
+            # Trigger DAG ngay sau khi upload
+            # if not trigger_dag(dag_id, conf={"uploaded_by": current_user.username}):
+            #     flash('Uploaded file, but failed to trigger DAG')
+            #     py_record.status = 'error'
+            #     db.session.commit()
+            #     return redirect(url_for('main.upload'))
 
         db.session.commit()
         flash('Files uploaded successfully')
@@ -183,9 +175,9 @@ def files():
 @login_required
 def download_file(filename):
     # Chỉ cho phép tải file thuộc về user
-    if not filename.startswith(f"{current_user.id}/"):
-        flash('Unauthorized access to file')
-        return redirect(url_for('main.files'))
+    # if not filename.startswith(f"{current_user.id}/"):
+    #     flash('Unauthorized access to file')
+    #     return redirect(url_for('main.files'))
     try:
         download_url = generate_download_url(filename)
         return redirect(download_url)

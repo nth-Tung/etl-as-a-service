@@ -7,13 +7,13 @@ def upload_to_minio():
     hook = S3Hook(aws_conn_id='minio_conn')
     hook.load_string(
         string_data="Hello from Airflow to MinIO!",
-        key="test-folder/hello.txt",
+        key="hello.txt",
         bucket_name="etl-bucket",  # đảm bảo đã tạo trong MinIO
         replace=True
     )
 
 with DAG(
-    dag_id="test_minio_upload",
+    dag_id="testabc",
     start_date=datetime(2024, 1, 1),
     schedule_interval='@once',
     catchup=False
