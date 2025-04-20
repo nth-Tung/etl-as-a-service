@@ -1,6 +1,6 @@
 from minio import Minio
 from minio.error import S3Error
-from config import Config
+from app.config import Config
 import logging
 from datetime import timedelta
 
