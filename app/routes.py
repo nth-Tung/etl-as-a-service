@@ -9,6 +9,9 @@ from app.utils.airflow_client import trigger_dag, get_dag_status
 import os
 from datetime import datetime
 import uuid
+import ast
+from werkzeug.utils import secure_filename
+from airflow.models import  DagBag
 
 bp = Blueprint('main', __name__)
 
@@ -60,62 +63,88 @@ def dashboard():
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 @bp.route('/upload', methods=['GET', 'POST'])
 @login_required
 def upload():
     if request.method == 'POST':
-        csv_file = request.files.get('csv_file')
+        data_file = request.files.get('data_file')
         py_file = request.files.get('py_file')
-        dag_id = request.form.get('dag_id')
-        if not csv_file and not py_file:
-            flash('No File')
+
+
+        # Kiểm tra ít nhất một file được upload
+        if not data_file and not py_file:
+            flash('At least one file is required')
             return redirect(url_for('main.upload'))
 
-        csv_filename = f"{current_user.id}/{dag_id}_{csv_file.filename}"
-        py_filename = f"dags/{dag_id}_{py_file.filename}"
+        # Tạo thư mục app/dags/<user_id> nếu chưa tồn tại
+        # user_dag_dir = os.path.join('app', 'dags', str(current_user.id))
+        # os.makedirs(user_dag_dir, exist_ok=True)
 
-        # # Upload to MinIO
-        # logger.debug(f"Uploading to MinIO: {csv_filename}, {py_filename}")
-        # upload_to_minio(csv_file, csv_filename)
-        # upload_to_minio(py_file, py_filename)
+        # Xử lý file dữ liệu (bất kỳ loại nào)
+        if data_file:
+            # Lấy tên file gốc
+            data_filename = data_file.filename
+            _, file_ext = os.path.splitext(data_filename)
+            file_type = file_ext.lstrip('.').lower() or 'unknown'
+            # Lưu vào app/dags/<user_id>/<filename>
+            data_dag_path = os.path.join('app','dags', data_filename)
 
-        # Ensure app/dags directory exists
-        dag_dir = os.path.join('app', 'dags')
-        logger.debug(f"Creating directory if not exists: {dag_dir}")
-        os.makedirs(dag_dir, exist_ok=True)
+            logger.debug(f"Saving data file to Airflow dags: {data_dag_path}")
+            data_file.seek(0)
+            data_file.save(data_dag_path)
 
-        # Save Python DAG file to ./app/dags for Airflow
-        dag_file_path = os.path.join(dag_dir, f"{dag_id}.py")
-        logger.debug(f"Saving DAG file to: {dag_file_path}")
-        py_file.seek(0)
-        py_file.save(dag_file_path)
+            if not os.path.exists(data_dag_path):
+                logger.error(f"Failed to save data file: {data_dag_path}")
+                flash('Error saving data file')
+                return redirect(url_for('main.upload'))
 
-        # Verify file was saved
-        if not os.path.exists(dag_file_path):
-            logger.error(f"Failed to save DAG file: {dag_file_path}")
-            flash('Error saving DAG file')
-            return redirect(url_for('main.upload'))
+            data_record = File(
+                user_id=current_user.id,
+                filename=data_filename,  # Lưu tên gốc
+                file_type=file_type,
+                status='uploaded',
+                dag_id= None
+            )
+            db.session.add(data_record)
 
-        # Save to database
-        logger.debug(f"Saving file records to database: {dag_id}")
-        csv_record = File(user_id=current_user.id, filename=csv_filename, file_type='csv', status='uploaded', dag_id=dag_id)
-        py_record = File(user_id=current_user.id, filename=py_filename, file_type='py', status='uploaded', dag_id=dag_id)
-        db.session.add(csv_record)
-        db.session.add(py_record)
+        # Xử lý file Python DAG
+        if py_file:
+            py_dag_path = os.path.join('app', 'dags', f"{py_file.filename}")
+
+            logger.debug(f"Saving PY to Airflow dags: {py_dag_path}")
+            py_file.seek(0)
+            py_file.save(py_dag_path)
+
+            if not os.path.exists(py_dag_path):
+                logger.error(f"Failed to save PY file: {py_dag_path}")
+                flash('Error saving PY file')
+                return redirect(url_for('main.upload'))
+
+            dag_bag = DagBag(dag_folder=f'app/dags/{py_file.filename}', include_examples=False)
+            dag_id = next(iter(dag_bag.dags), None)
+
+            py_record = File(
+                user_id=current_user.id,
+                filename=py_file.filename,
+                file_type='py',
+                status='processing',
+                dag_id=dag_id
+            )
+            db.session.add(py_record)
+
+            # Trigger DAG ngay sau khi upload
+            # if not trigger_dag(dag_id, conf={"uploaded_by": current_user.username}):
+            #     flash('Uploaded file, but failed to trigger DAG')
+            #     py_record.status = 'error'
+            #     db.session.commit()
+            #     return redirect(url_for('main.upload'))
+
         db.session.commit()
-
-        # Trigger Airflow DAG
-        logger.debug(f"Triggering DAG: {dag_id}")
-        trigger_dag(dag_id, {'csv_filename': csv_filename, 'py_filename': py_filename})
-        csv_record.status = 'processing'
-        py_record.status = 'processing'
-        db.session.commit()
-
-        flash('Files uploaded and DAG triggered')
+        flash('Files uploaded successfully')
         return redirect(url_for('main.dashboard'))
 
     return render_template('upload.html')
-
 
 @bp.route('/results')
 @login_required
@@ -146,9 +175,9 @@ def files():
 @login_required
 def download_file(filename):
     # Chỉ cho phép tải file thuộc về user
-    if not filename.startswith(f"{current_user.id}/"):
-        flash('Unauthorized access to file')
-        return redirect(url_for('main.files'))
+    # if not filename.startswith(f"{current_user.id}/"):
+    #     flash('Unauthorized access to file')
+    #     return redirect(url_for('main.files'))
     try:
         download_url = generate_download_url(filename)
         return redirect(download_url)

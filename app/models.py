@@ -20,11 +20,9 @@ class File(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     filename = db.Column(db.String(255), nullable=False)
-    file_type = db.Column(db.Enum('csv', 'py'), nullable=False)
-    dag_id = db.Column(db.String(100))
-    status = db.Column(db.Enum('uploaded', 'processing', 'done', 'error', 'success'), default='uploaded')
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
-    user = db.relationship('User', backref=db.backref('files', lazy=True))
+    file_type = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), nullable=False)
+    dag_id = db.Column(db.String(255), nullable=True)
 
 @login_manager.user_loader
 def load_user(user_id):
