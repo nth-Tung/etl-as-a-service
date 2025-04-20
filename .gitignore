@@ -1,1 +1,21 @@
-.venv
+# Virtual environment
+.venv/
+venv/
+
+# Airflow files (logs, SQLite DB, etc.)
+airflow/
+airflow.db
+airflow.cfg
+logs/
+
+# Environment config
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Docker Compose override files
+*.yaml
+*.yml
