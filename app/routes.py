@@ -1,17 +1,12 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from app import db
 from app.models import User, File
 import logging
-from werkzeug.security import generate_password_hash
+from app.config import Config
 from app.utils.minio_client import list_user_files, generate_download_url
-from app.utils.airflow_client import trigger_dag, get_dag_status
+from app.utils.airflow_client import get_dag_status, upload_to_airflow, extract_dag_id
 import os
-from datetime import datetime
-import uuid
-import ast
-from werkzeug.utils import secure_filename
-from airflow.models import  DagBag
 
 bp = Blueprint('main', __name__)
 
@@ -71,59 +66,33 @@ def upload():
         data_file = request.files.get('data_file')
         py_file = request.files.get('py_file')
 
-
-        # Kiểm tra ít nhất một file được upload
         if not data_file and not py_file:
             flash('At least one file is required')
             return redirect(url_for('main.upload'))
 
-        # Tạo thư mục app/dags/<user_id> nếu chưa tồn tại
-        # user_dag_dir = os.path.join('app', 'dags', str(current_user.id))
-        # os.makedirs(user_dag_dir, exist_ok=True)
+        airflow_api_url = Config.AIRFLOW_API_URL
+        records = []
 
-        # Xử lý file dữ liệu (bất kỳ loại nào)
-        if data_file:
-            # Lấy tên file gốc
-            data_filename = data_file.filename
-            _, file_ext = os.path.splitext(data_filename)
-            file_type = file_ext.lstrip('.').lower() or 'unknown'
-            # Lưu vào app/dags/<user_id>/<filename>
-            data_dag_path = os.path.join('airflow','dags', data_filename)
-
-            logger.debug(f"Saving data file to Airflow dags: {data_dag_path}")
-            data_file.seek(0)
-            data_file.save(data_dag_path)
-
-            if not os.path.exists(data_dag_path):
-                logger.error(f"Failed to save data file: {data_dag_path}")
-                flash('Error saving data file')
-                return redirect(url_for('main.upload'))
-
-            data_record = File(
-                user_id=current_user.id,
-                filename=data_filename,  # Lưu tên gốc
-                file_type=file_type,
-                status='uploaded',
-                dag_id= None
-            )
-            db.session.add(data_record)
-
-        # Xử lý file Python DAG
+        # Handle DAG file (py_file)
         if py_file:
-            py_dag_path = os.path.join('airflow', 'dags', f"{py_file.filename}")
-
-            logger.debug(f"Saving PY to Airflow dags: {py_dag_path}")
-            py_file.seek(0)
-            py_file.save(py_dag_path)
-
-            if not os.path.exists(py_dag_path):
-                logger.error(f"Failed to save PY file: {py_dag_path}")
-                flash('Error saving PY file')
+            if not py_file.filename.endswith('.py'):
+                flash('DAG file must be a .py file')
                 return redirect(url_for('main.upload'))
 
-            dag_bag = DagBag(dag_folder=f'airflow/dags/{py_file.filename}', include_examples=False)
-            dag_id = next(iter(dag_bag.dags), None)
+            # Extract dag_id from file
+            dag_id = extract_dag_id(py_file)
+            if not dag_id:
+                flash('Could not extract dag_id from DAG file')
+                return redirect(url_for('main.upload'))
 
+            # Reset file pointer after reading
+            py_file.seek(0)
+
+            # Upload to Airflow
+            if not upload_to_airflow(data_file, py_file, airflow_api_url, dag_id):
+                return redirect(url_for('main.upload'))
+
+            # Create database record for py_file
             py_record = File(
                 user_id=current_user.id,
                 filename=py_file.filename,
@@ -131,16 +100,31 @@ def upload():
                 status='processing',
                 dag_id=dag_id
             )
-            db.session.add(py_record)
-
-            # Trigger DAG ngay sau khi upload
-            if not trigger_dag(dag_id, conf={"uploaded_by": current_user.username}):
-                flash('Uploaded file, but failed to trigger DAG')
-                py_record.status = 'error'
-                db.session.commit()
+            records.append(py_record)
+        elif data_file:
+            # Handle data file only (no py_file)
+            # Optionally upload to Airflow without triggering a DAG
+            if not upload_to_airflow(data_file, None, airflow_api_url, None):
                 return redirect(url_for('main.upload'))
 
+        # Handle data file (if provided)
+        if data_file:
+            _, file_ext = os.path.splitext(data_file.filename)
+            file_type = file_ext.lstrip('.').lower() or 'unknown'
+            data_record = File(
+                user_id=current_user.id,
+                filename=data_file.filename,
+                file_type=file_type,
+                status='uploaded',
+                dag_id=None
+            )
+            records.append(data_record)
+
+        # Save all records to the database
+        for record in records:
+            db.session.add(record)
         db.session.commit()
+
         flash('Files uploaded successfully')
         return redirect(url_for('main.dashboard'))
 
@@ -153,7 +137,7 @@ def results():
     for file in files:
         if file.dag_id and file.status == 'processing':
             status = get_dag_status(file.dag_id)
-            file.status = status.lower() if status else 'error'
+            file.status = status.lower() if status else 'waiting'
             db.session.commit()
     return render_template('results.html', files=files)
 
@@ -185,3 +169,5 @@ def download_file(filename):
         logger.error(f"Failed to generate download URL for {filename}: {e}")
         flash('Error downloading file')
         return redirect(url_for('main.files'))
+
+
