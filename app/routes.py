@@ -4,7 +4,7 @@ from app import db
 from app.models import User, File
 import logging
 from werkzeug.security import generate_password_hash
-from app.utils.minio_client import upload_to_minio, list_user_files, generate_download_url
+from app.utils.minio_client import list_user_files, generate_download_url
 from app.utils.airflow_client import trigger_dag, get_dag_status
 import os
 from datetime import datetime
@@ -88,7 +88,7 @@ def upload():
             _, file_ext = os.path.splitext(data_filename)
             file_type = file_ext.lstrip('.').lower() or 'unknown'
             # Lưu vào app/dags/<user_id>/<filename>
-            data_dag_path = os.path.join('app','dags', data_filename)
+            data_dag_path = os.path.join('airflow','dags', data_filename)
 
             logger.debug(f"Saving data file to Airflow dags: {data_dag_path}")
             data_file.seek(0)
@@ -110,7 +110,7 @@ def upload():
 
         # Xử lý file Python DAG
         if py_file:
-            py_dag_path = os.path.join('app', 'dags', f"{py_file.filename}")
+            py_dag_path = os.path.join('airflow', 'dags', f"{py_file.filename}")
 
             logger.debug(f"Saving PY to Airflow dags: {py_dag_path}")
             py_file.seek(0)
@@ -121,7 +121,7 @@ def upload():
                 flash('Error saving PY file')
                 return redirect(url_for('main.upload'))
 
-            dag_bag = DagBag(dag_folder=f'app/dags/{py_file.filename}', include_examples=False)
+            dag_bag = DagBag(dag_folder=f'airflow/dags/{py_file.filename}', include_examples=False)
             dag_id = next(iter(dag_bag.dags), None)
 
             py_record = File(
@@ -134,11 +134,11 @@ def upload():
             db.session.add(py_record)
 
             # Trigger DAG ngay sau khi upload
-            # if not trigger_dag(dag_id, conf={"uploaded_by": current_user.username}):
-            #     flash('Uploaded file, but failed to trigger DAG')
-            #     py_record.status = 'error'
-            #     db.session.commit()
-            #     return redirect(url_for('main.upload'))
+            if not trigger_dag(dag_id, conf={"uploaded_by": current_user.username}):
+                flash('Uploaded file, but failed to trigger DAG')
+                py_record.status = 'error'
+                db.session.commit()
+                return redirect(url_for('main.upload'))
 
         db.session.commit()
         flash('Files uploaded successfully')

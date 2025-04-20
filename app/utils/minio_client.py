@@ -26,22 +26,22 @@ def ensure_bucket():
         logger.error(f"Failed to ensure bucket {Config.MINIO_BUCKET}: {e}")
         raise
 
-def upload_to_minio(file, filename):
-    ensure_bucket()  # Đảm bảo bucket tồn tại
-    client = get_minio_client()
-    try:
-        file.seek(0)
-        client.put_object(
-            Config.MINIO_BUCKET,
-            filename,
-            file,
-            length=-1,
-            part_size=10*1024*1024
-        )
-        logger.debug(f"Uploaded {filename} to MinIO")
-    except S3Error as e:
-        logger.error(f"Failed to upload {filename} to MinIO: {e}")
-        raise
+# def upload_to_minio(file, filename):
+#     ensure_bucket()  # Đảm bảo bucket tồn tại
+#     client = get_minio_client()
+#     try:
+#         file.seek(0)
+#         client.put_object(
+#             Config.MINIO_BUCKET,
+#             filename,
+#             file,
+#             length=-1,
+#             part_size=10*1024*1024
+#         )
+#         logger.debug(f"Uploaded {filename} to MinIO")
+#     except S3Error as e:
+#         logger.error(f"Failed to upload {filename} to MinIO: {e}")
+#         raise
 
 def list_user_files(user_id):
     ensure_bucket()  # Đảm bảo bucket tồn tại
