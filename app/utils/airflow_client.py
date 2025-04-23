@@ -7,7 +7,7 @@ import ast
 
 def trigger_dag(dag_id, conf):
     url = f"{Config.AIRFLOW_API_URL}/dags/{dag_id}/dagRuns"
-    auth = base64.b64encode(f"admin:admin".encode()).decode()
+    auth = base64.b64encode(f"airflow:airflow".encode()).decode()
     headers = {
         'Authorization': f'Basic {auth}',
         'Content-Type': 'application/json'
@@ -18,7 +18,7 @@ def trigger_dag(dag_id, conf):
 
 def get_dag_status(dag_id):
     url = f"{Config.AIRFLOW_API_URL}/dags/{dag_id}/dagRuns"
-    auth = base64.b64encode(f"admin:admin".encode()).decode()
+    auth = base64.b64encode(f"airflow:airflow".encode()).decode()
     headers = {
         'Authorization': f'Basic {auth}',
         'Content-Type': 'application/json'
@@ -43,7 +43,7 @@ def upload_to_airflow(data_file, dag_file, airflow_api_url, dag_id):
             flash('No files to upload')
             return False
 
-        auth = base64.b64encode(f"admin:admin".encode()).decode()
+        auth = base64.b64encode(f"airflow:airflow".encode()).decode()
         headers = {
             'Authorization': f'Basic {auth}',
         }

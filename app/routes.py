@@ -14,6 +14,10 @@ bp = Blueprint('main', __name__)
 def index():
     return redirect(url_for('main.login'))
 
+@bp.route('/health')
+def health_check():
+    return 'OK', 200
+
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
