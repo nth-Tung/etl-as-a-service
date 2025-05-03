@@ -15,7 +15,6 @@ Clone the web server project:
 
 ```bash
 git clone https://github.com/nth-Tung/etl_as_a_service
-cd etl_as_a_service
 ```
 
 Clone the Airflow project:
