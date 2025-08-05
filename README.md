@@ -14,13 +14,13 @@ This project sets up an ETL (Extract, Transform, Load) system using a custom Fla
 Clone the web server project:
 
 ```bash
-git clone https://github.com/nth-Tung/etl_as_a_service
+git clone https://github.com/nth-Tung/etl-as-a-service
 ```
 
 Clone the Airflow project:
 
 ```bash
-git clone https://github.com/nth-Tung/airflow_docker_postgres
+git clone https://github.com/nth-Tung/airflow-docker-postgres
 ```
 
 ### 2. Start MySQL container
